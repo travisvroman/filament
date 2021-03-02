@@ -930,6 +930,13 @@ int main(int argc, char** argv) {
     };
 
     auto animate = [&app](Engine* engine, View* view, double now) {
+
+        const auto server = app.remoteServer;
+        if (auto message = server ? server->acquireIncomingMessage() : nullptr) {
+            printf("%zu bytes\n", message->bufferByteCount);
+            server->releaseIncomingMessage(message);
+        }
+
         app.resourceLoader->asyncUpdateLoad();
 
         // Add renderables to the scene as they become ready.

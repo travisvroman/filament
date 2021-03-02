@@ -25,7 +25,7 @@ class CivetServer;
 namespace filament {
 namespace viewer {
 
-class WebSocketHandler;
+class WsHandler;
 
 struct IncomingMessage {
     enum { BUFFER, COMMAND } type;
@@ -43,18 +43,18 @@ public:
     bool isValid() const { return mCivetServer; }
     IncomingMessage const* peekIncomingMessage() const;
     IncomingMessage const* acquireIncomingMessage();
-    void releaseIncomingMessage(IncomingMessage* message);
+    void releaseIncomingMessage(IncomingMessage const* message);
 
 private:
     void enqueueIncomingMessage(IncomingMessage* message);
     CivetServer* mCivetServer = nullptr;
-    WebSocketHandler* mWebSocketHandler = nullptr;
+    WsHandler* mWsHandler = nullptr;
     size_t mNextMessageIndex = 0;
     size_t mOldestMessageIndex = 0;
     static const size_t kMessageCapacity = 4;
     IncomingMessage* mIncomingMessages[kMessageCapacity] = {};
     mutable std::mutex mIncomingMessagesMutex;
-    friend class WebSocketHandler;
+    friend class WsHandler;
 };
 
 } // namespace viewer

@@ -27,29 +27,23 @@ using namespace utils;
 namespace filament {
 namespace viewer {
 
-class WebSocketHandler : public CivetWebSocketHandler {
+class WsHandler : public CivetWebSocketHandler {
    public:
-    WebSocketHandler(RemoteServer* server) : mServer(server) {}
-
+    WsHandler(RemoteServer* server) : mServer(server) {}
     bool handleConnection(CivetServer* server, const struct mg_connection* conn) override {
         return true;
     }
-
     void handleReadyState(CivetServer* server, struct mg_connection* conn) override {
         mConnection = conn;
     }
-
     bool handleData(CivetServer* server, struct mg_connection* conn, int bits, char* data,
                     size_t size) override;
-
     void handleClose(CivetServer* server, const struct mg_connection* conn) override {
         mConnection = nullptr;
     }
-
    private:
     RemoteServer* mServer;
     std::vector<char> mChunkedMessage;
-    int mChunkedMessageRemaining = 0;
     struct mg_connection* mConnection = nullptr;
 };
 
@@ -71,14 +65,14 @@ RemoteServer::RemoteServer(int port) {
         slog.e << "Unable to start RemoteServer, see civetweb.txt for details." << io::endl;
     }
 
-    slog.i << "RemoteServer listening at http://localhost:" << port << io::endl;
-    mWebSocketHandler = new WebSocketHandler(this);
-    mCivetServer->addWebSocketHandler("", mWebSocketHandler);
+    slog.i << "RemoteServer listening at ws://localhost:" << port << io::endl;
+    mWsHandler = new WsHandler(this);
+    mCivetServer->addWebSocketHandler("", mWsHandler);
 }
 
 RemoteServer::~RemoteServer() {
     delete mCivetServer;
-    delete mWebSocketHandler;
+    delete mWsHandler;
     for (auto msg : mIncomingMessages) {
         releaseIncomingMessage(msg);
     }
@@ -117,7 +111,7 @@ void RemoteServer::enqueueIncomingMessage(IncomingMessage* message) {
     slog.e << "Discarding message, message queue overflow." << io::endl;
 }
 
-void RemoteServer::releaseIncomingMessage(IncomingMessage* message) {
+void RemoteServer::releaseIncomingMessage(IncomingMessage const* message) {
     if (message) {
         delete[] message->label;
         delete[] message->buffer;
@@ -126,46 +120,23 @@ void RemoteServer::releaseIncomingMessage(IncomingMessage* message) {
 }
 
 // NOTE: This is invoked off the main thread.
-bool WebSocketHandler::handleData(CivetServer* server, struct mg_connection* conn, int bits,
+bool WsHandler::handleData(CivetServer* server, struct mg_connection* conn, int bits,
                                   char* data, size_t size) {
+    const bool final = bits & 0x80;
     const int opcode = bits & 0xf;
     if (opcode == MG_WEBSOCKET_OPCODE_CONNECTION_CLOSE) {
         return true;
     }
-
-    // First check if this chunk is a continuation of a partial existing message.
-    if (mChunkedMessageRemaining > 0) {
-
-        // Append the partial existing message.
-        mChunkedMessage.insert(mChunkedMessage.end(), data, data + size);
-
-        // Determine number of outstanding bytes.
-        if (size > mChunkedMessageRemaining) {
-            mChunkedMessageRemaining = 0;
-        } else {
-            mChunkedMessageRemaining -= size;
-        }
-
-        // Return early and wait for more chunks if some bytes are still outstanding.
-        if (mChunkedMessageRemaining > 0) {
-            return true;
-        }
-
-        data = mChunkedMessage.data();
-        size = mChunkedMessage.size();
+    mChunkedMessage.insert(mChunkedMessage.end(), data, data + size);
+    if (!final) {
+        return true;
     }
-
-    mChunkedMessageRemaining = 0;
-
     IncomingMessage* message = new IncomingMessage({});
-    message->buffer = new char[size];
-    message->bufferByteCount = size;
-    memcpy(message->buffer, data, size);
-
+    message->buffer = new char[mChunkedMessage.size()];
+    message->bufferByteCount = mChunkedMessage.size();
+    memcpy(message->buffer, mChunkedMessage.data(), mChunkedMessage.size());
     mServer->enqueueIncomingMessage(message);
-
     mChunkedMessage.clear();
-
     return true;
 }
 
