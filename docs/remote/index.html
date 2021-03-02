@@ -61,7 +61,6 @@
             background: lightgreen;
         }
     </style>
-    <script src="https://unpkg.com/qrious@4.0.2/dist/qrious.js"></script>
 </head>
 
 <body>
@@ -69,7 +68,7 @@
     <div class="container">
         <div id="central" class="central-area">
             <div>
-                <p>Drop a <b>glb</b> file here.</p>
+                <p>Drop a <b>glb</b> or <b>zip</b> file here.</p>
             </div>
         </div>
     </div>
@@ -78,6 +77,7 @@
 
         const central = document.getElementById("central");
         const pipeId = generatePipeId();
+        let fileType = "glb";
 
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
             central.addEventListener(eventName, e => { e.preventDefault(); e.stopPropagation() }, false)
@@ -100,7 +100,10 @@
             if (!event.dataTransfer) return;
             if (event.dataTransfer.items[0].kind !== "file") return;
             const file = event.dataTransfer.items[0].getAsFile();
-            if (!file.name.match(/\.(glb)$/i)) return;
+            const is_glb = file.name.match(/\.(glb)$/i);
+            const is_zip = file.name.match(/\.(zip)$/i);
+            if (!is_glb && !is_zip) return;
+            if (is_zip) fileType = "zip";
             console.info(`Uploading ${file.name} to ${getPipeUrl()}`)
 
             const files = event.dataTransfer.files;
@@ -129,12 +132,37 @@
                 .catch(() => { /* Error. Inform the user */ });
         }
 
-        function generatePipeId() {
-            return Math.floor(Math.random() * Math.floor(1e+20)).toString(16);
-        }
+        function startSocket() {
+            const ws = new WebSocket("ws://localhost:8082");
 
-        function getPipeUrl() {
-            return `https://ppng.io/filament-qrcode-${pipeId}`;
+            // When a new server has come online, ask it what materials it has.
+            ws.addEventListener("open", () => {
+                footer.innerText = `connection ${gCurrentSocketId}`;
+                gCurrentSocketId++;
+
+                fetch("api/matids").then(function(response) {
+                    return response.json();
+                }).then(function(matInfo) {
+                    for (matid of matInfo) {
+                        if (!(matid in gMaterialDatabase)) {
+                            fetchMaterial(matid);
+                        }
+                    }
+                });
+            });
+
+            ws.addEventListener("close", (e) => {
+                footer.innerText = "no connection";
+                gSocket = null;
+                setTimeout(() => startSocket(), 3000);
+            });
+
+            ws.addEventListener("message", event => {
+                const matid = event.data;
+                fetchMaterial(matid);
+            });
+
+            gSocket = ws;
         }
 
     </script>

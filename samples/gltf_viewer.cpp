@@ -36,6 +36,7 @@
 
 #include <viewer/AutomationEngine.h>
 #include <viewer/AutomationSpec.h>
+#include <viewer/RemoteServer.h>
 #include <viewer/SimpleViewer.h>
 
 #include <camutils/Manipulator.h>
@@ -82,6 +83,8 @@ struct App {
     bool recomputeAabb = false;
 
     bool actualSize = false;
+
+    RemoteServer* remoteServer = nullptr;
 
     struct ViewOptions {
         float cameraAperture = 16.0f;
@@ -758,7 +761,8 @@ int main(int argc, char** argv) {
 
             // The screenshots do not include the UI, but we auto-open the Automation UI group
             // when in batch mode. This is useful when a human is observing progress.
-            const int flags = automation.isBatchModeEnabled() ? ImGuiTreeNodeFlags_DefaultOpen : 0;
+            // const int flags = automation.isBatchModeEnabled() ? ImGuiTreeNodeFlags_DefaultOpen : 0;
+            const int flags = ImGuiTreeNodeFlags_DefaultOpen;
 
             if (ImGui::CollapsingHeader("Automation", flags)) {
                 ImGui::Indent();
@@ -800,6 +804,20 @@ int main(int argc, char** argv) {
                     app.messageBoxText = automation.getStatusMessage();
                     ImGui::OpenPopup("MessageBox");
                 }
+
+                bool remoteControl = app.remoteServer;
+                ImGui::Checkbox("Enable remote control", &remoteControl);
+                if (remoteControl && !app.remoteServer) {
+                    app.remoteServer = new RemoteServer();
+                    if (!app.remoteServer->isValid()) {
+                        remoteControl = false;
+                    }
+                }
+                if (!remoteControl && app.remoteServer) {
+                    delete app.remoteServer;
+                    app.remoteServer = nullptr;
+                }
+
                 ImGui::Unindent();
             }
 
@@ -906,6 +924,7 @@ int main(int argc, char** argv) {
         delete app.viewer;
         delete app.materials;
         delete app.names;
+        delete app.remoteServer;
 
         AssetLoader::destroy(&app.assetLoader);
     };
