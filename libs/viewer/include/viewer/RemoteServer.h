@@ -31,7 +31,7 @@ struct IncomingMessage {
     char* label;
     char* buffer;
     size_t bufferByteCount;
-    size_t messageIndex;
+    size_t messageUid;
 };
 
 class RemoteServer {
@@ -47,8 +47,8 @@ private:
     void enqueueIncomingMessage(IncomingMessage* message);
     CivetServer* mCivetServer = nullptr;
     WsHandler* mWsHandler = nullptr;
-    size_t mNextMessageIndex = 0;
-    size_t mOldestMessageIndex = 0;
+    size_t mNextMessageUid = 0;
+    size_t mOldestMessageUid = 0;
     static const size_t kMessageCapacity = 4;
     IncomingMessage* mIncomingMessages[kMessageCapacity] = {};
     mutable std::mutex mIncomingMessagesMutex;

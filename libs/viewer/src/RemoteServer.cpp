@@ -70,19 +70,19 @@ RemoteServer::~RemoteServer() {
 
 IncomingMessage const * RemoteServer::peekIncomingMessage() const {
     std::lock_guard lock(mIncomingMessagesMutex);
-    const size_t oldest = mOldestMessageIndex;
-    for (auto msg : mIncomingMessages) { if (msg && msg->messageIndex == oldest) return msg; }
+    const size_t oldest = mOldestMessageUid;
+    for (auto msg : mIncomingMessages) { if (msg && msg->messageUid == oldest) return msg; }
     return nullptr;
 }
 
 IncomingMessage const * RemoteServer::acquireIncomingMessage() {
     std::lock_guard lock(mIncomingMessagesMutex);
-    const size_t oldest = mOldestMessageIndex;
+    const size_t oldest = mOldestMessageUid;
     for (auto& msg : mIncomingMessages) {
-        if (msg && msg->messageIndex == oldest) {
+        if (msg && msg->messageUid == oldest) {
             auto result = msg;
             msg = nullptr;
-            ++mOldestMessageIndex;
+            ++mOldestMessageUid;
             return result;
         }
     }
@@ -93,7 +93,7 @@ void RemoteServer::enqueueIncomingMessage(IncomingMessage* message) {
     std::lock_guard lock(mIncomingMessagesMutex);
     for (auto& msg : mIncomingMessages) {
         if (!msg) {
-            message->messageIndex = mNextMessageIndex++;
+            message->messageUid = mNextMessageUid++;
             msg = message;
             return;
         }
