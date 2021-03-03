@@ -933,7 +933,7 @@ int main(int argc, char** argv) {
 
         const auto server = app.remoteServer;
         if (auto message = server ? server->acquireIncomingMessage() : nullptr) {
-            printf("%zu bytes\n", message->bufferByteCount);
+            printf("%s, %zu bytes\n", message->label, message->bufferByteCount);
             server->releaseIncomingMessage(message);
         }
 

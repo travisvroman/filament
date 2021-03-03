@@ -71,6 +71,7 @@
             <div>
                 <p>Drop a <b>glb</b> file here.</p>
                 <p>If your client is Android, then you can also drop a <b>zip</b>.</p>
+                <p><code>adb forward tcp:8082 tcp:8082</code></p>
             </div>
         </div>
     </div>
@@ -83,7 +84,7 @@
         let websocket = null;
         let pollForServer = null;
         let widgetsDb = [];
-        let outgoingMessage = null;
+        let pendingFile = null;
         let fileType = "glb";
 
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -117,10 +118,13 @@
 
         function uploadFile(file) {
             if (websocket) {
-                console.info(`Uploading ${file.name}`)
+                console.info(`Uploading ${file.name}`);
+                // const label = new TextEncoder("utf-8").encode(file.name + '\0');
+                // websocket.send(label.arrayBuffer);
+                websocket.send(file.name);
                 websocket.send(file);
             } else {
-                outgoingMessage = file;
+                pendingFile = file;
             }
         }
 
@@ -139,10 +143,9 @@
                 clearTimeout(pollForServer);
                 resetWidgetsDb();
                 updateDom();
-                if (outgoingMessage) {
-                    console.info(`Uploading ${file.name}`)
-                    ws.send(outgoingMessage);
-                    outgoingMessage = null;
+                if (pendingFile) {
+                    uploadFile(pendingFile);
+                    pendingFile = null;
                 }
             });
 

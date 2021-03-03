@@ -30,26 +30,15 @@ namespace viewer {
 class WsHandler : public CivetWebSocketHandler {
    public:
     WsHandler(RemoteServer* server) : mServer(server) {}
-    bool handleConnection(CivetServer* server, const struct mg_connection* conn) override {
-        return true;
-    }
-    void handleReadyState(CivetServer* server, struct mg_connection* conn) override {
-        mConnection = conn;
-    }
-    bool handleData(CivetServer* server, struct mg_connection* conn, int bits, char* data,
-                    size_t size) override;
-    void handleClose(CivetServer* server, const struct mg_connection* conn) override {
-        mConnection = nullptr;
-    }
+    ~WsHandler() { delete mIncomingMessage; }
+    bool handleData(CivetServer* server, struct mg_connection*, int, char* , size_t) override;
    private:
     RemoteServer* mServer;
-    std::vector<char> mChunkedMessage;
-    struct mg_connection* mConnection = nullptr;
+    std::vector<char> mChunk;
+    IncomingMessage* mIncomingMessage = nullptr;
 };
 
 RemoteServer::RemoteServer(int port) {
-    // By default the server spawns 50 threads so we override this to 2. This limits the
-    // server to having no more than 2 clients, which is probably fine.
     const char* kServerOptions[] = {
         "listening_ports", "8082",
         "num_threads",     "2",
@@ -60,14 +49,15 @@ RemoteServer::RemoteServer(int port) {
     kServerOptions[1] = portString.c_str();
     mCivetServer = new CivetServer(kServerOptions);
     if (!mCivetServer->getContext()) {
+        slog.e << "Unable to start RemoteServer, see civetweb.txt for details." << io::endl;
         delete mCivetServer;
         mCivetServer = nullptr;
-        slog.e << "Unable to start RemoteServer, see civetweb.txt for details." << io::endl;
+        mWsHandler = nullptr;
+        return;
     }
-
-    slog.i << "RemoteServer listening at ws://localhost:" << port << io::endl;
     mWsHandler = new WsHandler(this);
     mCivetServer->addWebSocketHandler("", mWsHandler);
+    slog.i << "RemoteServer listening at ws://localhost:" << port << io::endl;
 }
 
 RemoteServer::~RemoteServer() {
@@ -127,16 +117,34 @@ bool WsHandler::handleData(CivetServer* server, struct mg_connection* conn, int 
     if (opcode == MG_WEBSOCKET_OPCODE_CONNECTION_CLOSE) {
         return true;
     }
-    mChunkedMessage.insert(mChunkedMessage.end(), data, data + size);
+
+    // Append this frame to the aggregated chunk.
+    mChunk.insert(mChunk.end(), data, data + size);
+
+    // If this message part still has outstanding frames, return early.
     if (!final) {
         return true;
     }
-    IncomingMessage* message = new IncomingMessage({});
-    message->buffer = new char[mChunkedMessage.size()];
-    message->bufferByteCount = mChunkedMessage.size();
-    memcpy(message->buffer, mChunkedMessage.data(), mChunkedMessage.size());
-    mServer->enqueueIncomingMessage(message);
-    mChunkedMessage.clear();
+
+    // Part 1 of the message is the label.
+    if (mIncomingMessage == nullptr) {
+        mIncomingMessage = new IncomingMessage({});
+        mIncomingMessage->label = new char[mChunk.size() + 1]{};
+        memcpy(mIncomingMessage->label, mChunk.data(), mChunk.size());
+        mChunk.clear();
+        return true;
+    }
+
+    // Part 2 of the message is the buffer.
+    auto message = mIncomingMessage;
+    message->bufferByteCount = mChunk.size();
+    message->buffer = new char[message->bufferByteCount];
+    memcpy(message->buffer, mChunk.data(), message->bufferByteCount);
+    mChunk.clear();
+
+    // We have all parts, so go ahead and enqueue the incoming message.
+    mServer->enqueueIncomingMessage(mIncomingMessage);
+    mIncomingMessage = nullptr;
     return true;
 }
 

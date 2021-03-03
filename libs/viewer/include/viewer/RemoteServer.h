@@ -28,11 +28,9 @@ namespace viewer {
 class WsHandler;
 
 struct IncomingMessage {
-    enum { BUFFER, COMMAND } type;
     char* label;
     char* buffer;
     size_t bufferByteCount;
-    size_t fetchedByteCount;
     size_t messageIndex;
 };
 
